@@ -4078,13 +4078,14 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
 
-    if (key === 'ArrowUp' && inputHistoryRef.current.length > 0 && !promptRef.current.includes('\n')) {
+    const cur = composerEditorRef.current?.readSnapshot()?.cursor ?? 0;
+    if (key === 'ArrowUp' && inputHistoryRef.current.length > 0 && !promptRef.current.slice(0, cur).includes('\n')) {
       if (historyIdxRef.current === -1) historyDraftRef.current = promptRef.current;
       historyIdxRef.current = Math.min(historyIdxRef.current + 1, inputHistoryRef.current.length - 1);
       setPrompt(inputHistoryRef.current[historyIdxRef.current]!);
       return true;
     }
-    if (key === 'ArrowDown' && historyIdxRef.current >= 0) {
+    if (key === 'ArrowDown' && historyIdxRef.current >= 0 && !promptRef.current.slice(cur).includes('\n')) {
       const next = historyIdxRef.current - 1;
       historyIdxRef.current = next;
       setPrompt(next >= 0 ? inputHistoryRef.current[next]! : historyDraftRef.current);
