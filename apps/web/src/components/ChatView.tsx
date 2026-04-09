@@ -816,6 +816,9 @@ export default function ChatView(props: ChatViewProps) {
   const attachmentPreviewHandoffTimeoutByMessageIdRef = useRef<Record<string, number>>({});
   const sendInFlightRef = useRef(false);
   const dragDepthRef = useRef(0);
+  const inputHistoryRef = useRef<string[]>([]);
+  const historyIdxRef = useRef(-1);
+  const historyDraftRef = useRef('');
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
   const setMessagesScrollContainerRef = useCallback((element: HTMLDivElement | null) => {
     messagesScrollRef.current = element;
@@ -2510,6 +2513,14 @@ export default function ChatView(props: ChatViewProps) {
   }, [composerTerminalContexts]);
 
   useEffect(() => {
+    inputHistoryRef.current = (activeThread?.messages ?? [])
+      .filter((m) => m.role === 'user' && m.text.trim())
+      .map((m) => m.text.trim())
+      .reverse();
+    historyIdxRef.current = -1;
+  }, [activeThread?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     if (!activeThread?.id) return;
     if (activeThread.messages.length === 0) {
       return;
@@ -3178,6 +3189,7 @@ export default function ChatView(props: ChatViewProps) {
         description: toastCopy.description,
       });
     }
+    if (promptForSend.trim()) { inputHistoryRef.current.unshift(promptForSend.trim()); historyIdxRef.current = -1; }
     promptRef.current = "";
     clearComposerDraftContent(scopeThreadRef(activeThread.environmentId, threadIdForSend));
     setComposerHighlightedItemId(null);
@@ -4066,6 +4078,18 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
 
+    if (key === 'ArrowUp' && inputHistoryRef.current.length > 0 && !promptRef.current.includes('\n')) {
+      if (historyIdxRef.current === -1) historyDraftRef.current = promptRef.current;
+      historyIdxRef.current = Math.min(historyIdxRef.current + 1, inputHistoryRef.current.length - 1);
+      setPrompt(inputHistoryRef.current[historyIdxRef.current]!);
+      return true;
+    }
+    if (key === 'ArrowDown' && historyIdxRef.current >= 0) {
+      const next = historyIdxRef.current - 1;
+      historyIdxRef.current = next;
+      setPrompt(next >= 0 ? inputHistoryRef.current[next]! : historyDraftRef.current);
+      return true;
+    }
     if (key === "Enter" && !event.shiftKey) {
       void onSend();
       return true;
