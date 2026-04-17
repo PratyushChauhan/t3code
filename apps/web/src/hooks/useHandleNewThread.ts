@@ -10,45 +10,26 @@ import {
 } from "../composerDraftStore";
 import { newDraftId, newThreadId } from "../lib/utils";
 import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
-import { deriveLogicalProjectKey } from "../logicalProject";
+import { deriveLogicalProjectKeyFromSettings } from "../logicalProject";
 import { selectProjectsAcrossEnvironments, useStore } from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
+import { useSettings } from "./useSettings";
 
-export function useHandleNewThread() {
+function useNewThreadState() {
   const projects = useStore(useShallow((store) => selectProjectsAcrossEnvironments(store)));
-  const projectOrder = useUiStateStore((store) => store.projectOrder);
+  const projectGroupingSettings = useSettings((settings) => ({
+    sidebarProjectGroupingMode: settings.sidebarProjectGroupingMode,
+    sidebarProjectGroupingOverrides: settings.sidebarProjectGroupingOverrides,
+  }));
   const router = useRouter();
-  const routeTarget = useParams({
-    strict: false,
-    select: (params) => resolveThreadRouteTarget(params),
-  });
-  const routeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
-  const activeThread = useStore(
-    useMemo(() => createThreadSelectorByRef(routeThreadRef), [routeThreadRef]),
-  );
-  const getDraftThread = useComposerDraftStore((store) => store.getDraftThread);
-  const activeDraftThread = useComposerDraftStore(() =>
-    routeTarget
-      ? routeTarget.kind === "server"
-        ? getDraftThread(routeTarget.threadRef)
-        : useComposerDraftStore.getState().getDraftSession(routeTarget.draftId)
-      : null,
-  );
-  const orderedProjects = useMemo(() => {
-    return orderItemsByPreferredIds({
-      items: projects,
-      preferredIds: projectOrder,
-      getId: (project) => scopedProjectKey(scopeProjectRef(project.environmentId, project.id)),
-    });
-  }, [projectOrder, projects]);
   const getCurrentRouteTarget = useCallback(() => {
     const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
     return resolveThreadRouteTarget(currentRouteParams);
   }, [router]);
 
-  const handleNewThread = useCallback(
+  return useCallback(
     (
       projectRef: ScopedProjectRef,
       options?: {
@@ -72,7 +53,7 @@ export function useHandleNewThread() {
           candidate.environmentId === projectRef.environmentId,
       );
       const logicalProjectKey = project
-        ? deriveLogicalProjectKey(project)
+        ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
         : scopedProjectKey(projectRef);
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
@@ -111,7 +92,8 @@ export function useHandleNewThread() {
       if (
         latestActiveDraftThread &&
         currentRouteTarget?.kind === "draft" &&
-        latestActiveDraftThread.logicalProjectKey === logicalProjectKey
+        latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
+        latestActiveDraftThread.promotedTo == null
       ) {
         if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
           setDraftThreadContext(currentRouteTarget.draftId, {
@@ -152,8 +134,45 @@ export function useHandleNewThread() {
         });
       })();
     },
-    [getCurrentRouteTarget, router, projects],
+    [getCurrentRouteTarget, projectGroupingSettings, router, projects],
   );
+}
+
+export function useNewThreadHandler() {
+  const handleNewThread = useNewThreadState();
+
+  return {
+    handleNewThread,
+  };
+}
+
+export function useHandleNewThread() {
+  const projectOrder = useUiStateStore((store) => store.projectOrder);
+  const routeTarget = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteTarget(params),
+  });
+  const routeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
+  const activeThread = useStore(
+    useMemo(() => createThreadSelectorByRef(routeThreadRef), [routeThreadRef]),
+  );
+  const getDraftThread = useComposerDraftStore((store) => store.getDraftThread);
+  const activeDraftThread = useComposerDraftStore(() =>
+    routeTarget
+      ? routeTarget.kind === "server"
+        ? getDraftThread(routeTarget.threadRef)
+        : useComposerDraftStore.getState().getDraftSession(routeTarget.draftId)
+      : null,
+  );
+  const projects = useStore(useShallow((store) => selectProjectsAcrossEnvironments(store)));
+  const orderedProjects = useMemo(() => {
+    return orderItemsByPreferredIds({
+      items: projects,
+      preferredIds: projectOrder,
+      getId: (project) => scopedProjectKey(scopeProjectRef(project.environmentId, project.id)),
+    });
+  }, [projectOrder, projects]);
+  const handleNewThread = useNewThreadState();
 
   return {
     activeDraftThread,
